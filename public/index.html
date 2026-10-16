@@ -11,17 +11,22 @@
     <header class="bg-slate-800 border-b border-slate-700 px-6 py-3 flex items-center justify-between">
         <div class="flex items-center space-x-3">
             <div class="bg-indigo-600 p-2 rounded-lg font-bold text-white">⚡ Scriptless Automation</div>
-            <!-- <span class="text-sm bg-slate-700 px-2.5 py-1 rounded-full text-indigo-300">Enterprise Edition</span> -->
         </div>
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-3">
             <input type="file" id="recorderFileInput" accept=".json" class="hidden" onchange="uploadRecorderJson(event)">
-            <button onclick="document.getElementById('recorderFileInput').click()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer">
-                📁 Import Recorder JSON
+            <button onclick="document.getElementById('recorderFileInput').click()" class="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer">
+                📁 Import JSON
             </button>
-            <button onclick="addNewNode()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer">
+            <button onclick="addNewNode()" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer">
                 ➕ Add Node
             </button>
-            <button onclick="runWorkflow()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition cursor-pointer">
+            <button onclick="saveCurrentWorkflow()" class="bg-sky-600 hover:bg-sky-500 px-3 py-2 rounded-lg text-sm font-medium shadow transition cursor-pointer">
+                Save Workflow 💾
+            </button>
+            <button onclick="startHoverInspector()" class="bg-amber-600 hover:bg-amber-500 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer">
+                🎯 Record Hover Element
+            </button>
+            <button onclick="runWorkflow()" class="bg-emerald-600 hover:bg-emerald-500 px-3 py-2 rounded-lg text-sm font-medium shadow-lg transition cursor-pointer">
                 Run Workflow 🚀
             </button>
         </div>
@@ -29,28 +34,42 @@
 
     <!-- Main Workspace -->
     <div class="flex flex-1 overflow-hidden">
+        <!-- Left Sidebar: Stored Workflows & Components -->
         <aside class="w-80 bg-slate-800/50 border-r border-slate-700 flex flex-col">
+            <div class="p-4 border-b border-slate-700 font-semibold text-sm flex justify-between items-center">
+                <span>Stored Workflows</span>
+                <button onclick="loadWorkflowsList()" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded transition cursor-pointer">🔄 Refresh</button>
+            </div>
+            <!-- Workflows List -->
+            <div id="workflowsListContainer" class="p-3 space-y-1.5 border-b border-slate-700 max-h-48 overflow-y-auto">
+                <div class="text-xs text-slate-500 text-center py-2">Loading saved workflows...</div>
+            </div>
+
             <div class="p-4 border-b border-slate-700 font-semibold text-sm">Extracted Components</div>
             <div id="componentList" class="flex-1 overflow-y-auto p-4 space-y-3">
-                <div class="text-xs text-slate-500 text-center mt-10">Upload a Chrome Recorder JSON file to populate components.</div>
+                <div class="text-xs text-slate-500 text-center mt-6">Select or load a workflow to populate components.</div>
             </div>
         </aside>
 
+        <!-- Main Canvas Area -->
         <main class="flex-1 bg-slate-950 flex flex-col p-6 overflow-y-auto">
             <div class="flex justify-between items-center mb-6">
                 <div>
-                    <h1 id="workflowTitle" class="text-xl font-bold">Workflow: No Recording Loaded</h1>
-                    <p class="text-xs text-slate-400 mt-0.5">Manage workflow nodes and self-healing locator strategies. Drag cards to reorder.</p>
+                    <h1 id="workflowTitle" class="text-xl font-bold">Workflow: No Workflow Selected</h1>
+                    <p class="text-xs text-slate-400 mt-0.5">Click "Save Workflow" explicitly to persist changes. Use inline buttons to add steps.</p>
+                </div>
+                <div id="workflowHeaderActions" class="hidden space-x-2">
+                    <button onclick="deleteCurrentWorkflow()" class="bg-rose-900/40 hover:bg-rose-600 border border-rose-800 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer">🗑️ Delete</button>
                 </div>
             </div>
 
-            <div id="workflowCanvas" class="space-y-4 max-w-3xl">
-                <div class="text-slate-500 text-sm italic">Upload a recording file or click "Add Node" to start building workflows.</div>
+            <div id="workflowCanvas" class="space-y-4 max-w-3xl pb-16">
+                <div class="text-slate-500 text-sm italic">Select a workflow from the left sidebar or import a recording to start building.</div>
             </div>
         </main>
     </div>
 
-    <!-- Edit Node Modal with Self-Healing Fallbacks -->
+    <!-- Edit Node Modal -->
     <div id="editModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
         <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl w-full max-w-lg shadow-2xl">
             <h2 class="text-lg font-bold mb-4">Configure Workflow Step & Self-Healing Locators</h2>
@@ -65,6 +84,7 @@
                         <option value="dblclick">dblclick</option>
                         <option value="type">type</option>
                         <option value="hover">hover</option>
+                        <option value="viewport">viewport (Set Width, Height)</option>
                         <option value="waitForSelector">waitForSelector</option>
                         <option value="waitLoop">waitLoop (Sync / Retry Wait)</option>
                         <option value="fileUpload">fileUpload</option>
@@ -73,18 +93,17 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1">Test Data / URL / Value Template</label>
-                    <input type="text" id="editTestData" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500" placeholder="e.g. ${user.username} or seconds for waitLoop">
+                    <input type="text" id="editTestData" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500" placeholder="e.g. ${user.username}, 1920,1080 for viewport">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1">Self-Healing Fallback Locators (One per line)</label>
-                    <textarea id="editLocators" rows="4" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-indigo-500" placeholder="#username&#10;//input[@id='username']"></textarea>
-                    <p class="text-[10px] text-slate-400 mt-1">The engine iterates through these in order if the primary selector fails.</p>
+                    <textarea id="editLocators" rows="4" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-100 focus:outline-none focus:border-indigo-500"></textarea>
                 </div>
             </div>
 
             <div class="flex justify-end space-x-3 mt-6">
                 <button onclick="closeEditModal()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer">Cancel</button>
-                <button onclick="saveNodeEdit()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer">Save Changes</button>
+                <button onclick="saveNodeEdit()" class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer">Apply Changes</button>
             </div>
         </div>
     </div>
@@ -93,6 +112,55 @@
         let currentWorkflowId = null;
         let workflowNodes = [];
         let draggedIndex = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadWorkflowsList();
+        });
+
+        async function loadWorkflowsList() {
+            try {
+                const response = await fetch('/api/workflows');
+                const result = await response.json();
+                const container = document.getElementById('workflowsListContainer');
+                container.innerHTML = '';
+
+                if (!result.success || !result.workflows || result.workflows.length === 0) {
+                    container.innerHTML = `<div class="text-[11px] text-slate-500 text-center py-2">No saved workflows found.</div>`;
+                    return;
+                }
+
+                result.workflows.forEach(wfId => {
+                    const btn = document.createElement('button');
+                    btn.className = `w-full text-left px-3 py-2 rounded-lg text-xs font-medium truncate transition cursor-pointer ${currentWorkflowId === wfId ? 'bg-indigo-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`;
+                    btn.innerText = `📄 ${wfId}`;
+                    btn.onclick = () => loadWorkflow(wfId);
+                    container.appendChild(btn);
+                });
+            } catch (err) {
+                console.error('Failed to load workflows list', err);
+            }
+        }
+
+        async function loadWorkflow(workflowId) {
+            try {
+                const response = await fetch(`/api/workflow/${workflowId}`);
+                const result = await response.json();
+                if (result.success) {
+                    currentWorkflowId = result.workflowId;
+                    workflowNodes = result.nodes;
+                    document.getElementById('workflowTitle').innerText = `Workflow: ${workflowId}`;
+                    document.getElementById('workflowHeaderActions').classList.remove('hidden');
+                    document.getElementById('workflowHeaderActions').classList.add('flex');
+                    renderUI();
+                    loadWorkflowsList();
+                } else {
+                    alert('Error loading workflow: ' + result.error);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Failed to load workflow file.');
+            }
+        }
 
         async function uploadRecorderJson(event) {
             const file = event.target.files[0];
@@ -113,27 +181,108 @@
                 if (result.success) {
                     currentWorkflowId = result.workflowId;
                     workflowNodes = result.nodes;
-                    document.getElementById('workflowTitle').innerText = `Workflow: ${file.name}`;
+                    
+                    document.getElementById('workflowTitle').innerText = `Workflow: ${currentWorkflowId}`;
+                    document.getElementById('workflowHeaderActions').classList.remove('hidden');
+                    document.getElementById('workflowHeaderActions').classList.add('flex');
+                    
                     renderUI();
+                    loadWorkflowsList();
+                    alert(`✅ Successfully imported and saved as "${currentWorkflowId}.json"!`);
                 } else {
                     alert('Error: ' + result.error);
                 }
             } catch (err) {
                 console.error(err);
                 alert('Failed to upload and parse file.');
+            } finally {
+                event.target.value = '';
             }
         }
 
-        async function syncWorkflowToBackend() {
-            if (!currentWorkflowId) return;
+        async function saveCurrentWorkflow() {
+            if (!currentWorkflowId) {
+                alert('No active workflow to save!');
+                return;
+            }
             try {
-                await fetch(`/api/workflow/${currentWorkflowId}`, {
+                const response = await fetch(`/api/workflow/${currentWorkflowId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ nodes: workflowNodes })
                 });
+                const result = await response.json();
+                if (result.success) {
+                    alert(`✅ Workflow "${currentWorkflowId}" saved successfully!`);
+                    loadWorkflowsList();
+                } else {
+                    alert('❌ Save failed: ' + result.error);
+                }
             } catch (err) {
-                console.error('Failed to sync workflow state', err);
+                console.error('Failed to save workflow', err);
+                alert('Error communicating with server to save workflow.');
+            }
+        }
+
+        async function deleteCurrentWorkflow() {
+            if (!currentWorkflowId) return;
+            if (!confirm(`Are you sure you want to delete workflow "${currentWorkflowId}"?`)) return;
+
+            try {
+                const response = await fetch(`/api/workflow/${currentWorkflowId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert(`🗑️ Workflow deleted successfully.`);
+                    currentWorkflowId = null;
+                    workflowNodes = [];
+                    document.getElementById('workflowTitle').innerText = `Workflow: No Workflow Selected`;
+                    document.getElementById('workflowHeaderActions').classList.remove('flex');
+                    document.getElementById('workflowHeaderActions').classList.add('hidden');
+                    renderUI();
+                    loadWorkflowsList();
+                } else {
+                    alert('Delete failed: ' + result.error);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error deleting workflow.');
+            }
+        }
+
+        async function startHoverInspector() {
+            const startUrl = prompt("Enter starting URL to begin inspection (e.g. your login or app URL):", "https://the-internet.herokuapp.com/");
+            if (!startUrl) return;
+
+            alert("A browser window will open.\n1. Navigate to your target page or log in.\n2. Open your dropdown menu.\n3. Hover your mouse over the desired sub-item.\n4. Press [Ctrl + Space] to capture self-healing fallbacks!");
+
+            try {
+                const response = await fetch('/api/record-hover', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ startUrl })
+                });
+
+                const result = await response.json();
+                if (result.success && result.selectors && result.selectors.length > 0) {
+                    // Create a hover node pre-loaded with multiple self-healing fallback locators
+                    const hoverNode = {
+                        instanceId: `step_${Date.now()}`,
+                        action: 'hover',
+                        testDataTemplate: '',
+                        locators: result.selectors // Pass the full array of captured fallback selectors
+                    };
+
+                    workflowNodes.push(hoverNode);
+                    renderUI();
+                    alert(`✅ Successfully captured ${result.selectors.length} self-healing fallback locators and added them as a node!\n\nFallbacks:\n${result.selectors.join('\n')}`);
+                } else {
+                    alert('Hover capture was cancelled or failed.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error communicating with hover inspector server.');
             }
         }
 
@@ -153,9 +302,8 @@
                 const locatorsStr = node.locators ? node.locators.join(', ') : 'None';
                 
                 const card = document.createElement('div');
-                card.className = "bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow cursor-move hover:border-indigo-500 transition-all";
+                card.className = "bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow cursor-move hover:border-indigo-500 transition-all relative";
                 
-                // Enable HTML5 Drag and Drop
                 card.setAttribute('draggable', 'true');
                 card.dataset.index = index;
 
@@ -182,6 +330,15 @@
                 `;
                 canvas.appendChild(card);
 
+                const inlineAddContainer = document.createElement('div');
+                inlineAddContainer.className = "flex justify-center my-1";
+                inlineAddContainer.innerHTML = `
+                    <button onclick="insertNodeAfter(${index})" class="bg-slate-800 hover:bg-indigo-600 border border-slate-700 text-slate-300 hover:text-white px-3 py-1 rounded-full text-[11px] font-medium shadow transition cursor-pointer flex items-center space-x-1">
+                        <span>➕ Insert Step Here</span>
+                    </button>
+                `;
+                canvas.appendChild(inlineAddContainer);
+
                 componentList.innerHTML += `
                     <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
                         <div class="text-xs text-indigo-400 font-semibold">Step ${index + 1} Component</div>
@@ -190,11 +347,9 @@
                     </div>
                 `;
             });
-
-            syncWorkflowToBackend();
         }
 
-        // Drag and Drop Event Handlers
+        // Drag and Drop
         function handleDragStart(e) {
             draggedIndex = parseInt(this.dataset.index, 10);
             this.classList.add('opacity-40', 'border-dashed', 'border-indigo-500');
@@ -226,7 +381,9 @@
         function addNewNode() {
             if (!currentWorkflowId) {
                 currentWorkflowId = `wf_${Date.now()}`;
-                document.getElementById('workflowTitle').innerText = 'Workflow: Custom Built Workflow';
+                document.getElementById('workflowTitle').innerText = `Workflow: ${currentWorkflowId}`;
+                document.getElementById('workflowHeaderActions').classList.remove('hidden');
+                document.getElementById('workflowHeaderActions').classList.add('flex');
             }
 
             workflowNodes.push({
@@ -236,6 +393,25 @@
                 locators: ['body']
             });
 
+            renderUI();
+        }
+
+        function insertNodeAfter(index) {
+            if (!currentWorkflowId) {
+                currentWorkflowId = `wf_${Date.now()}`;
+                document.getElementById('workflowTitle').innerText = `Workflow: ${currentWorkflowId}`;
+                document.getElementById('workflowHeaderActions').classList.remove('hidden');
+                document.getElementById('workflowHeaderActions').classList.add('flex');
+            }
+
+            const newNode = {
+                instanceId: `step_${Date.now()}`,
+                action: 'click',
+                testDataTemplate: '',
+                locators: ['body']
+            };
+
+            workflowNodes.splice(index + 1, 0, newNode);
             renderUI();
         }
 
@@ -282,7 +458,7 @@
 
         async function runWorkflow() {
             if (!currentWorkflowId || workflowNodes.length === 0) {
-                alert('Please upload a recording or add workflow nodes first!');
+                alert('Please select a workflow or add workflow nodes first!');
                 return;
             }
 
@@ -306,7 +482,7 @@
                 if (result.success) {
                     alert('✅ Test execution completed successfully!');
                 } else {
-                    alert('❌ Execution failed. Check your server terminal logs and failure screenshot for debugging.');
+                    alert('❌ Execution failed. Check your server terminal logs.');
                 }
             } catch (err) {
                 console.error(err);

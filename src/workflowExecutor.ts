@@ -12,10 +12,11 @@ export class WorkflowExecutionEngine {
     });
   }
 
-  // Enhanced Self-Healing with deep diagnostic logging for each fallback
+  // Enhanced Self-Healing with Smart Auto-Hover Recovery for hidden submenus/dropdowns
   private async findWorkingElement(page: Page, frame: Frame | Page, locators: string[]): Promise<string | null> {
     console.log(`🔍 [Self-Healing Engine] Evaluating ${locators.length} fallback locator(s):`, locators);
 
+    // Pass 1: Standard visible check
     for (let i = 0; i < locators.length; i++) {
       const locator = locators[i];
       try {
@@ -27,6 +28,40 @@ export class WorkflowExecutionEngine {
         console.log(`   ❌ Failed on "${locator}". Reason: ${err.message.split('\n')[0]}`);
       }
     }
+
+    // Pass 2: Smart Auto-Hover Recovery Pass (Handles hidden dropdown submenus automatically)
+    console.log(`🔄 [Smart Auto-Hover] Standard visibility checks failed. Attempting parent hover recovery...`);
+    for (let i = 0; i < locators.length; i++) {
+      const locator = locators[i];
+      try {
+        const element = frame.locator(locator).first();
+        if (await element.count() > 0) {
+          console.log(`   💡 Found attached element for locator "${locator}". Attempting to hover parent container...`);
+          
+          // Locate the nearest interactive parent container (menu, dropdown, nav, list item, etc.)
+          const parentContainer = element.locator('xpath=ancestor::*[contains(@class, "menu") or contains(@class, "dropdown") or contains(@class, "nav") or self::li or self::ul][1]');
+          
+          if (await parentContainer.count() > 0) {
+            await parentContainer.hover();
+          } else {
+            // Fallback to direct parent node
+            const directParent = element.locator('xpath=..');
+            await directParent.hover();
+          }
+
+          // Wait briefly for CSS transitions and dropdown animations to render the submenu
+          await page.waitForTimeout(400);
+
+          // Re-check visibility now that the parent has been hovered
+          await frame.waitForSelector(locator, { timeout: 2000, state: 'visible' });
+          console.log(`   ✅ Success via Auto-Hover Recovery on locator: "${locator}"`);
+          return locator;
+        }
+      } catch (hoverErr: any) {
+        console.log(`   ❌ Auto-hover recovery failed for "${locator}": ${hoverErr.message.split('\n')[0]}`);
+      }
+    }
+
     return null;
   }
 
@@ -67,7 +102,7 @@ export class WorkflowExecutionEngine {
         const resolvedValue = this.resolveData(step.testDataTemplate || '', dataContext);
 
         // Human-like delay between normal steps
-        await activePage.waitForTimeout(3000);
+        await activePage.waitForTimeout(1500);
 
         if (step.action === 'navigate') {
           console.log(`🌐 [Step ${i + 1}] Navigating to: ${resolvedValue}`);
@@ -173,7 +208,7 @@ export class WorkflowExecutionEngine {
           continue;
         }
 
-        // Standard execution for all other actions
+        // Standard execution for all other actions (Leverages Auto-Hover through findWorkingElement)
         const workingLocator = await this.findWorkingElement(activePage, targetContext, component.locators);
         
         if (!workingLocator) {
@@ -182,11 +217,9 @@ export class WorkflowExecutionEngine {
 
         // --- ENTERPRISE AUTO-SCROLL & HUMAN PACING ---
         try {
-          // Smoothly scroll the element into the center of the viewport before acting on it
           const elementHandle = await targetContext.$(workingLocator);
           if (elementHandle) {
             await elementHandle.scrollIntoViewIfNeeded();
-            // Optional tiny pause after scrolling to let sticky headers/animations settle
             await activePage.waitForTimeout(300);
           }
         } catch (scrollErr) {
@@ -229,6 +262,17 @@ export class WorkflowExecutionEngine {
             break;
           case 'scroll':
             await activePage.mouse.wheel(0, 400);
+            break;
+          case 'viewport':
+          case 'setViewport':
+          case 'resize':
+            // Expects testDataTemplate to be in format "width,height" e.g., "1920,1080"
+            const dimensions = resolvedValue.split(',').map((v: string) => parseInt(v.trim(), 10));
+            const width = dimensions[0] || 1280;
+            const height = dimensions[1] || 720;
+
+            console.log(`📐 [Viewport Node] Resizing browser window to width: ${width}, height: ${height}`);
+            await activePage.setViewportSize({ width, height });
             break;
           default:
             console.warn(`⚠️ Unhandled action type: ${step.action}`);
