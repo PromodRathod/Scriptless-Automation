@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Environment variables & local secrets
+.env
+.env.local
+
+# Playwright test failure artifacts & screenshots
+failure_*.png
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# OS-generated metadata files
+.DS_Store
+Thumbs.db
+
+# Build outputs (if you compile TypeScript to JS)
+dist/
+build/
+test_recording/

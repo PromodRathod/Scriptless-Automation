@@ -1,0 +1,25 @@
+{
+  "name": "codeless-test-automation",
+  "version": "1.0.0",
+  "description": "Enterprise-grade codeless test automation framework inspired by FireFlink",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/server.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.42.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^20.11.0",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "multer": "^2.4.0",
+    "serve": "^14.2.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
