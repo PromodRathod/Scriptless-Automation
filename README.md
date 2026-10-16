@@ -1,6 +1,6 @@
-# ⚡ AutoFlow Studio: Codeless Automation Framework
+# ⚡ Scriptless Automation Studio: Codeless Automation Framework
 
-**AutoFlow Studio** is an enterprise-grade, codeless test automation platform engineered with a scriptless visual workflow builder powered by **Playwright** and **Express.js**. 
+**Scriptless Automation Studio** is an enterprise-grade, codeless test automation platform engineered with a scriptless visual workflow builder powered by **Playwright** and **Express.js**. 
 
 Designed for scalability, ease of use, and maximum execution stability, AutoFlow Studio features **dynamic self-healing locators**, **custom asynchronous synchronization (`waitLoop`)**, **native file upload handling**, and **smooth auto-scrolling** for complex modern web applications and legacy JSP pages.
 
