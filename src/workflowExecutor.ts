@@ -1,4 +1,3 @@
-// src/enterpriseExecutor.ts
 import { chromium, Page, Frame } from 'playwright';
 import { WorkflowManager } from './workflowManager';
 
@@ -38,21 +37,16 @@ export class WorkflowExecutionEngine {
         if (await element.count() > 0) {
           console.log(`   💡 Found attached element for locator "${locator}". Attempting to hover parent container...`);
           
-          // Locate the nearest interactive parent container (menu, dropdown, nav, list item, etc.)
           const parentContainer = element.locator('xpath=ancestor::*[contains(@class, "menu") or contains(@class, "dropdown") or contains(@class, "nav") or self::li or self::ul][1]');
           
           if (await parentContainer.count() > 0) {
             await parentContainer.hover();
           } else {
-            // Fallback to direct parent node
             const directParent = element.locator('xpath=..');
             await directParent.hover();
           }
 
-          // Wait briefly for CSS transitions and dropdown animations to render the submenu
           await page.waitForTimeout(400);
-
-          // Re-check visibility now that the parent has been hovered
           await frame.waitForSelector(locator, { timeout: 2000, state: 'visible' });
           console.log(`   ✅ Success via Auto-Hover Recovery on locator: "${locator}"`);
           return locator;
@@ -82,6 +76,41 @@ export class WorkflowExecutionEngine {
     const context = await browser.newContext();
     let activePage: Page = await context.newPage();
 
+    // Store network API logs mapped by step instanceId
+    const networkLogs: Record<string, Array<{ method: string; url: string; status: number; responseBody?: string }>> = {};
+    let currentStepId = '';
+
+    // Intercept network responses for API observability
+    activePage.on('response', async (response) => {
+      try {
+        const request = response.request();
+        const resourceType = request.resourceType();
+        if (['fetch', 'xhr', 'document'].includes(resourceType)) {
+          const url = response.url();
+          const status = response.status();
+          const method = request.method();
+          
+          let responseBody = '';
+          try {
+            const contentType = response.headers()['content-type'] || '';
+            if (contentType.includes('application/json')) {
+              responseBody = await response.text();
+              if (responseBody.length > 400) {
+                responseBody = responseBody.substring(0, 400) + '... [truncated]';
+              }
+            }
+          } catch (e) {}
+
+          if (currentStepId) {
+            if (!networkLogs[currentStepId]) {
+              networkLogs[currentStepId] = [];
+            }
+            networkLogs[currentStepId].push({ method, url, status, responseBody });
+          }
+        }
+      } catch (err) {}
+    });
+
     context.on('page', async (newPage) => {
       console.log(`📑 New popup/tab detected, switching context...`);
       await newPage.waitForLoadState();
@@ -99,9 +128,9 @@ export class WorkflowExecutionEngine {
     try {
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
+        currentStepId = step.instanceId; // Bind network logs to current step
         const resolvedValue = this.resolveData(step.testDataTemplate || '', dataContext);
 
-        // Human-like delay between normal steps
         await activePage.waitForTimeout(1500);
 
         if (step.action === 'navigate') {
@@ -135,7 +164,6 @@ export class WorkflowExecutionEngine {
 
           let uploadedSuccessfully = false;
 
-          // 1. Try finding an explicit input[type="file"] first
           for (const loc of component.locators) {
             try {
               const element = await targetContext.$(loc);
@@ -153,7 +181,6 @@ export class WorkflowExecutionEngine {
             } catch {}
           }
 
-          // 2. Fallback: File Chooser Event Interceptor for custom UI buttons
           if (!uploadedSuccessfully) {
             console.log(`   🔄 Custom upload button detected. Using File Chooser Event Interceptor...`);
             
@@ -208,23 +235,19 @@ export class WorkflowExecutionEngine {
           continue;
         }
 
-        // Standard execution for all other actions (Leverages Auto-Hover through findWorkingElement)
         const workingLocator = await this.findWorkingElement(activePage, targetContext, component.locators);
         
         if (!workingLocator) {
           throw new Error(`Self-Healing Exhausted: All ${component.locators.length} fallback locator(s) failed for component [${component.name}].`);
         }
 
-        // --- ENTERPRISE AUTO-SCROLL & HUMAN PACING ---
         try {
           const elementHandle = await targetContext.$(workingLocator);
           if (elementHandle) {
             await elementHandle.scrollIntoViewIfNeeded();
             await activePage.waitForTimeout(300);
           }
-        } catch (scrollErr) {
-          // Non-blocking fallback if scroll into view fails
-        }
+        } catch (scrollErr) {}
 
         switch (step.action) {
           case 'click':
@@ -266,7 +289,6 @@ export class WorkflowExecutionEngine {
           case 'viewport':
           case 'setViewport':
           case 'resize':
-            // Expects testDataTemplate to be in format "width,height" e.g., "1920,1080"
             const dimensions = resolvedValue.split(',').map((v: string) => parseInt(v.trim(), 10));
             const width = dimensions[0] || 1280;
             const height = dimensions[1] || 720;
@@ -280,6 +302,7 @@ export class WorkflowExecutionEngine {
       }
 
       console.log(`\n✅ Enterprise Workflow executed successfully!`);
+      return { success: true, networkLogs };
     } catch (error: any) {
       executionFailed = true;
       console.error(`\n❌ Execution Failed:`, error.message);
@@ -291,6 +314,7 @@ export class WorkflowExecutionEngine {
 
       console.log(`\n🛑 [DEBUG MODE] Browser window will remain open for inspection.`);
       await new Promise(() => {});
+      throw error;
     } finally {
       if (!executionFailed) {
         await browser.close();

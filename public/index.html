@@ -59,7 +59,7 @@
                     <p class="text-xs text-slate-400 mt-0.5">Click "Save Workflow" explicitly to persist changes. Use inline buttons to add steps.</p>
                 </div>
                 <div id="workflowHeaderActions" class="hidden space-x-2">
-                    <button onclick="deleteCurrentWorkflow()" class="bg-rose-900/40 hover:bg-rose-600 border border-rose-800 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer">🗑️ Delete</button>
+                    <button onclick="deleteCurrentWorkflow()" class="bg-rose-900/40 hover:bg-rose-600 border border-rose-800 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer">🗑️ Delete Workflow</button>
                 </div>
             </div>
 
@@ -112,6 +112,7 @@
         let currentWorkflowId = null;
         let workflowNodes = [];
         let draggedIndex = null;
+        let lastExecutionLogs = {}; // Stores captured network traffic from the last execution run
 
         window.addEventListener('DOMContentLoaded', () => {
             loadWorkflowsList();
@@ -148,6 +149,7 @@
                 if (result.success) {
                     currentWorkflowId = result.workflowId;
                     workflowNodes = result.nodes;
+                    lastExecutionLogs = {}; // Reset logs on workflow switch
                     document.getElementById('workflowTitle').innerText = `Workflow: ${workflowId}`;
                     document.getElementById('workflowHeaderActions').classList.remove('hidden');
                     document.getElementById('workflowHeaderActions').classList.add('flex');
@@ -181,6 +183,7 @@
                 if (result.success) {
                     currentWorkflowId = result.workflowId;
                     workflowNodes = result.nodes;
+                    lastExecutionLogs = {};
                     
                     document.getElementById('workflowTitle').innerText = `Workflow: ${currentWorkflowId}`;
                     document.getElementById('workflowHeaderActions').classList.remove('hidden');
@@ -237,6 +240,7 @@
                     alert(`🗑️ Workflow deleted successfully.`);
                     currentWorkflowId = null;
                     workflowNodes = [];
+                    lastExecutionLogs = {};
                     document.getElementById('workflowTitle').innerText = `Workflow: No Workflow Selected`;
                     document.getElementById('workflowHeaderActions').classList.remove('flex');
                     document.getElementById('workflowHeaderActions').classList.add('hidden');
@@ -266,12 +270,11 @@
 
                 const result = await response.json();
                 if (result.success && result.selectors && result.selectors.length > 0) {
-                    // Create a hover node pre-loaded with multiple self-healing fallback locators
                     const hoverNode = {
                         instanceId: `step_${Date.now()}`,
                         action: 'hover',
                         testDataTemplate: '',
-                        locators: result.selectors // Pass the full array of captured fallback selectors
+                        locators: result.selectors
                     };
 
                     workflowNodes.push(hoverNode);
@@ -301,6 +304,32 @@
             workflowNodes.forEach((node, index) => {
                 const locatorsStr = node.locators ? node.locators.join(', ') : 'None';
                 
+                // Build network API traffic badges for this specific step if logged
+                let apiLogsHtml = '';
+                const stepLogs = lastExecutionLogs[node.instanceId] || [];
+                if (stepLogs.length > 0) {
+                    apiLogsHtml = `<div class="mt-3 pt-2 border-t border-slate-800 space-y-1.5">
+                        <div class="text-[10px] font-bold text-emerald-400 flex items-center justify-between">
+                            <span>📡 Captured API Traffic (${stepLogs.length})</span>
+                        </div>`;
+                    
+                    stepLogs.forEach(log => {
+                        const isSuccess = log.status >= 200 && log.status < 300;
+                        const badgeColor = isSuccess 
+                            ? 'text-emerald-300 bg-emerald-950/50 border-emerald-800/60' 
+                            : 'text-rose-300 bg-rose-950/50 border-rose-800/60';
+                        
+                        apiLogsHtml += `
+                            <div class="text-[10px] font-mono p-1.5 rounded border ${badgeColor} flex items-center justify-between truncate shadow-sm">
+                                <span class="font-bold px-1 rounded bg-slate-900 mr-2">${log.method}</span>
+                                <span class="truncate flex-1 text-slate-300" title="${log.url}">${log.url}</span>
+                                <span class="ml-2 font-semibold px-1 rounded bg-slate-900">[${log.status}]</span>
+                            </div>
+                        `;
+                    });
+                    apiLogsHtml += `</div>`;
+                }
+
                 const card = document.createElement('div');
                 card.className = "bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow cursor-move hover:border-indigo-500 transition-all relative";
                 
@@ -313,12 +342,13 @@
                 card.addEventListener('dragend', handleDragEnd);
 
                 card.innerHTML = `
-                    <div class="flex items-center space-x-4 pointer-events-none">
+                    <div class="flex items-center space-x-4 pointer-events-none w-full">
                         <span class="bg-indigo-900/50 text-indigo-400 font-bold px-2.5 py-1 rounded text-xs">☰ #${index + 1}</span>
-                        <div>
+                        <div class="flex-1 overflow-hidden">
                             <div class="text-sm font-semibold">Action: <span class="text-indigo-300">${node.action}</span></div>
                             <div class="text-xs text-slate-400">Data / URL: ${node.testDataTemplate || 'N/A'}</div>
                             <div class="text-[11px] font-mono text-indigo-400/80 mt-1 truncate max-w-xs">Fallbacks: ${locatorsStr}</div>
+                            ${apiLogsHtml}
                         </div>
                     </div>
                     <div class="flex items-center space-x-2" onclick="event.stopPropagation()">
@@ -462,7 +492,7 @@
                 return;
             }
 
-            alert('Triggering Playwright Execution Engine. Watch your server terminal for detailed self-healing diagnostics!');
+            alert('Triggering Playwright Execution Engine with Network Traffic Monitoring...');
 
             try {
                 const response = await fetch(`/api/execute/${currentWorkflowId}`, {
@@ -480,7 +510,9 @@
 
                 const result = await response.json();
                 if (result.success) {
-                    alert('✅ Test execution completed successfully!');
+                    lastExecutionLogs = result.networkLogs || {};
+                    renderUI(); // Re-render canvas to display captured API traffic badges!
+                    alert('✅ Test execution completed successfully! Check your workflow step cards below for captured API requests.');
                 } else {
                     alert('❌ Execution failed. Check your server terminal logs.');
                 }

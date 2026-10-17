@@ -1,4 +1,3 @@
-// src/server.ts
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -180,15 +179,20 @@ app.post('/api/upload-recorder', upload.single('recorderFile'), (req, res) => {
   }
 });
 
-// 7. Execute Workflow via Playwright
+// 7. Execute Workflow via Playwright & Return Network Logs
 app.post('/api/execute/:workflowId', async (req, res) => {
   const { workflowId } = req.params;
   const { dataContext } = req.body;
 
   try {
     const engine = new WorkflowExecutionEngine(manager);
-    await engine.execute(workflowId, dataContext || {}, false);
-    res.json({ success: true, message: 'Workflow executed successfully!' });
+    const result = await engine.execute(workflowId, dataContext || {}, false);
+    
+    res.json({ 
+      success: true, 
+      message: 'Workflow executed successfully!',
+      networkLogs: result.networkLogs || {} 
+    });
   } catch (error: any) {
     console.error('Execution error:', error);
     res.status(500).json({ success: false, error: error.message });
