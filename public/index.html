@@ -266,17 +266,18 @@
 
                 const result = await response.json();
                 if (result.success && result.selectors && result.selectors.length > 0) {
-                    // Create a hover node pre-loaded with multiple self-healing fallback locators
                     const hoverNode = {
                         instanceId: `step_${Date.now()}`,
                         action: 'hover',
                         testDataTemplate: '',
-                        locators: result.selectors // Pass the full array of captured fallback selectors
+                        locators: result.selectors,
+                        name: result.name || 'Hover over element',
+                        description: result.description || 'Move mouse pointer over target.'
                     };
 
                     workflowNodes.push(hoverNode);
                     renderUI();
-                    alert(`✅ Successfully captured ${result.selectors.length} self-healing fallback locators and added them as a node!\n\nFallbacks:\n${result.selectors.join('\n')}`);
+                    alert(`✅ Successfully captured self-healing hover element and added it as a node!`);
                 } else {
                     alert('Hover capture was cancelled or failed.');
                 }
@@ -313,12 +314,20 @@
                 card.addEventListener('dragend', handleDragEnd);
 
                 card.innerHTML = `
-                    <div class="flex items-center space-x-4 pointer-events-none">
+                    <div class="flex items-center space-x-4 pointer-events-none w-full">
                         <span class="bg-indigo-900/50 text-indigo-400 font-bold px-2.5 py-1 rounded text-xs">☰ #${index + 1}</span>
-                        <div>
-                            <div class="text-sm font-semibold">Action: <span class="text-indigo-300">${node.action}</span></div>
-                            <div class="text-xs text-slate-400">Data / URL: ${node.testDataTemplate || 'N/A'}</div>
-                            <div class="text-[11px] font-mono text-indigo-400/80 mt-1 truncate max-w-xs">Fallbacks: ${locatorsStr}</div>
+                        <div class="flex-1 overflow-hidden">
+                            <!-- Enterprise Natural Language Title & Action Badge -->
+                            <div class="text-sm font-bold text-slate-100 flex items-center justify-between">
+                                <span>${node.name || 'Action Step'}</span>
+                                <span class="text-[10px] uppercase tracking-wider bg-slate-800 text-indigo-300 px-2 py-0.5 rounded font-mono">${node.action}</span>
+                            </div>
+                            
+                            <!-- Single-Line Natural Language Description -->
+                            <p class="text-xs text-slate-400 mt-0.5">${node.description || 'Automation step instruction.'}</p>
+                            
+                            <div class="text-xs text-slate-500 mt-1">Data / URL: ${node.testDataTemplate || 'N/A'}</div>
+                            <div class="text-[11px] font-mono text-indigo-400/80 mt-1 truncate max-w-md">Fallbacks: ${locatorsStr}</div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2" onclick="event.stopPropagation()">
@@ -342,7 +351,7 @@
                 componentList.innerHTML += `
                     <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
                         <div class="text-xs text-indigo-400 font-semibold">Step ${index + 1} Component</div>
-                        <div class="text-sm font-medium mt-1">Action: ${node.action}</div>
+                        <div class="text-sm font-medium mt-1">${node.name || node.action}</div>
                         <div class="text-[10px] text-slate-400 truncate mt-1">Locators: ${locatorsStr}</div>
                     </div>
                 `;

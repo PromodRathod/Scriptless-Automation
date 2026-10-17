@@ -6,6 +6,7 @@ import { parseEnterpriseRecorder } from './advancedParser';
 import { WorkflowManager, WorkflowStep } from './workflowManager';
 import { WorkflowExecutionEngine } from './workflowExecutor';
 import { chromium } from 'playwright';
+import { generateNodeNL } from './nlGenerator';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -26,7 +27,7 @@ app.get('/api/workflows', (req, res) => {
   }
 });
 
-// 2. Load a specific workflow file
+// 2. Load a specific workflow file with Natural Language enrichment
 app.get('/api/workflow/:workflowId', (req, res) => {
   const { workflowId } = req.params;
   try {
@@ -34,12 +35,19 @@ app.get('/api/workflow/:workflowId', (req, res) => {
 
     const enrichedNodes = steps.map(step => {
       const comp = step.componentId ? manager.getComponent(step.componentId) : null;
+      const locators = comp ? comp.locators : [];
+      const testData = step.testDataTemplate || '';
+      
+      // Generate Natural Language title & description
+      const nl = generateNodeNL(step.action, testData, locators);
+
       return {
         ...step,
-        name: comp ? comp.name : (step.action === 'navigate' ? 'Navigate' : 'Action Step'),
-        locators: comp ? comp.locators : [],
+        name: comp && comp.name ? comp.name : nl.title,
+        description: nl.description,
+        locators,
         framePath: comp ? comp.framePath : undefined,
-        testData: step.testDataTemplate || ''
+        testData
       };
     });
 
@@ -124,7 +132,7 @@ app.post('/api/workflow/:workflowId/rename', (req, res) => {
   }
 });
 
-// 6. Upload & Parse Chrome Recorder JSON
+// 6. Upload & Parse Chrome Recorder JSON with NL titles
 app.post('/api/upload-recorder', upload.single('recorderFile'), (req, res) => {
   try {
     if (!req.file) {
@@ -142,11 +150,12 @@ app.post('/api/upload-recorder', upload.single('recorderFile'), (req, res) => {
     const workflowSteps: WorkflowStep[] = [];
     parsed.nodes.forEach((node, idx) => {
       const componentId = `comp_${Date.now()}_${idx}`;
+      const locators = node.selectors && node.selectors.length > 0 ? node.selectors : ['body'];
       
       manager.registerComponent({
         componentId,
         name: node.name,
-        locators: node.selectors && node.selectors.length > 0 ? node.selectors : ['body'],
+        locators,
         framePath: node.framePath
       });
 
@@ -162,9 +171,16 @@ app.post('/api/upload-recorder', upload.single('recorderFile'), (req, res) => {
 
     const enrichedNodes = workflowSteps.map(step => {
       const comp = step.componentId ? manager.getComponent(step.componentId) : null;
+      const locators = comp ? comp.locators : [];
+      const testData = step.testDataTemplate || '';
+      
+      const nl = generateNodeNL(step.action, testData, locators);
+
       return {
         ...step,
-        locators: comp ? comp.locators : []
+        name: comp && comp.name ? comp.name : nl.title,
+        description: nl.description,
+        locators
       };
     });
 
@@ -297,6 +313,15 @@ app.post('/api/record-hover', async (req, res) => {
     }
 
     console.log(`✅ [Hover Inspector] Captured self-healing locators:`, capturedSelectors);
+    const nl = generateNodeNL('hover', '', capturedSelectors);
+
+    console.log(`✅ [Hover Inspector] Captured self-healing locators:`, capturedSelectors);
+    res.json({
+      success: true,
+      selectors: capturedSelectors,
+      name: nl.title,
+      description: nl.description
+    });
     res.json({
       success: true,
       selectors: capturedSelectors
